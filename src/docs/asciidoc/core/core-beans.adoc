@@ -42,7 +42,7 @@ information on using the `BeanFactory` instead of the `ApplicationContext,` see
 
 In Spring, the objects that form the backbone of your application and that are managed
 by the Spring IoC container are called beans. A bean is an object that is
-instantiated, assembled, and otherwise managed by a Spring IoC container. Otherwise, a
+instantiated, assembled, and managed by a Spring IoC container. Otherwise, a
 bean is simply one of many objects in your application. Beans, and the dependencies
 among them, are reflected in the configuration metadata used by a container.
 
@@ -135,8 +135,7 @@ dependency-inject domain objects with Spring>>.
 
 The following example shows the basic structure of XML-based configuration metadata:
 
-[source,xml,indent=0]
-[subs="verbatim,quotes"]
+[source,xml,indent=0,subs="verbatim,quotes"]
 ----
 	<?xml version="1.0" encoding="UTF-8"?>
 	<beans xmlns="http://www.springframework.org/schema/beans"
@@ -640,17 +639,16 @@ You can use the `Class` property in one of two ways:
   from the invocation of the `static` factory method may be the same class or another
   class entirely.
 
+.Nested class names
 ****
-.Inner class names
-If you want to configure a bean definition for a `static` nested class, you have to use
-the binary name of the nested class.
+If you want to configure a bean definition for a nested class, you may use either the
+binary name or the source name of the nested class.
 
-For example, if you have a class called `SomeThing` in the `com.example` package, and this
-`SomeThing` class has a `static` nested class called `OtherThing`, the value of the `class`
-attribute on a bean definition would be `com.example.SomeThing$OtherThing`.
-
-Notice the use of the `$` character in the name to separate the nested class name from
-the outer class name.
+For example, if you have a class called `SomeThing` in the `com.example` package, and
+this `SomeThing` class has a `static` nested class called `OtherThing`, they can be
+separated by a dollar sign (`$`) or a dot (`.`). So the value of the `class` attribute in
+a bean definition would be `com.example.SomeThing$OtherThing` or
+`com.example.SomeThing.OtherThing`.
 ****
 
 
@@ -1980,8 +1978,7 @@ then nested `constructor-arg` elements.
 The following example uses the `c:` namespace to do the same thing as the from
 <<beans-constructor-injection>>:
 
-[source,xml,indent=0]
-[subs="verbatim,quotes"]
+[source,xml,indent=0,subs="verbatim,quotes"]
 ----
 	<beans xmlns="http://www.springframework.org/schema/beans"
 		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -3428,8 +3425,7 @@ you can use the `init-method` attribute to specify the name of the method that h
 no-argument signature. With Java configuration, you can use the `initMethod` attribute of
 `@Bean`. See <<beans-java-lifecycle-callbacks>>. Consider the following example:
 
-[source,xml,indent=0]
-[subs="verbatim,quotes"]
+[source,xml,indent=0,subs="verbatim,quotes"]
 ----
 	<bean id="exampleInitBean" class="examples.ExampleBean" init-method="init"/>
 ----
@@ -4424,7 +4420,8 @@ which these `BeanFactoryPostProcessor` instances run by setting the `order` prop
 However, you can only set this property if the `BeanFactoryPostProcessor` implements the
 `Ordered` interface. If you write your own `BeanFactoryPostProcessor`, you should
 consider implementing the `Ordered` interface, too. See the javadoc of the
-{api-spring-framework}/beans/factory/config/BeanFactoryPostProcessor.html[`BeanFactoryPostProcessor`] and {api-spring-framework}/core/Ordered.html[`Ordered`] interfaces for more details.
+{api-spring-framework}/beans/factory/config/BeanFactoryPostProcessor.html[`BeanFactoryPostProcessor`]
+and {api-spring-framework}/core/Ordered.html[`Ordered`] interfaces for more details.
 
 [NOTE]
 ====
@@ -4995,6 +4992,7 @@ The same applies for typed collections, as the following example shows:
 	}
 ----
 
+[[beans-factory-ordered]]
 [TIP]
 ====
 Your target beans can implement the `org.springframework.core.Ordered` interface or use
@@ -7851,8 +7849,7 @@ To enable component scanning, you can annotate your `@Configuration` class as fo
 Experienced Spring users may be familiar with the XML declaration equivalent from
 Spring's `context:` namespace, shown in the following example:
 
-[source,xml,indent=0]
-[subs="verbatim,quotes"]
+[source,xml,indent=0,subs="verbatim,quotes"]
 ----
 	<beans>
 		<context:component-scan base-package="com.acme"/>
@@ -11027,7 +11024,75 @@ location path as a classpath location. You can also use location paths (resource
 with special prefixes to force loading of definitions from the classpath or a URL,
 regardless of the actual context type.
 
+[[context-functionality-startup]]
+=== Application Startup tracking
 
+The `ApplicationContext` manages the lifecycle of Spring applications and provides a rich
+programming model around components. As a result, complex applications can have equally
+complex component graphs and startup phases.
+
+Tracking the application startup steps with specific metrics can help understand where
+time is being spent during the startup phase, but it can also be used as a way to better
+understand the context lifecycle as a whole.
+
+The `AbstractApplicationContext` (and its subclasses) is instrumented with an
+`ApplicationStartup`, which collects `StartupStep` data about various startup phases:
+
+* application context lifecycle (base packages scanning, config classes management)
+* beans lifecycle (instantiation, smart initialization, post processing)
+* application events processing
+
+Here is an example of instrumentation in the `AnnotationConfigApplicationContext`:
+
+[source,java,indent=0,subs="verbatim,quotes",role="primary"]
+.Java
+----
+	// create a startup step and start recording
+	StartupStep scanPackages = this.getApplicationStartup().start("spring.context.base-packages.scan");
+	// add tagging information to the current step
+	scanPackages.tag("packages", () -> Arrays.toString(basePackages));
+	// perform the actual phase we're instrumenting
+	this.scanner.scan(basePackages);
+	// end the current step
+	scanPackages.end();
+----
+[source,kotlin,indent=0,subs="verbatim,quotes",role="secondary"]
+.Kotlin
+----
+	// create a startup step and start recording
+	val scanPackages = this.getApplicationStartup().start("spring.context.base-packages.scan")
+	// add tagging information to the current step
+	scanPackages.tag("packages", () -> Arrays.toString(basePackages))
+	// perform the actual phase we're instrumenting
+	this.scanner.scan(basePackages)
+	// end the current step
+	scanPackages.end()
+----
+
+The application context is already instrumented with multiple steps.
+Once recorded, these startup steps can be collected, displayed and analyzed with specific tools.
+For a complete list of existing startup steps, you can check out the
+<<application-startup-steps, dedicated appendix section>>.
+
+The default `ApplicationStartup` implementation is a no-op variant, for minimal overhead.
+This means no metrics will be collected during application startup by default.
+Spring Framework ships with an implementation for tracking startup steps with Java Flight Recorder:
+`FlightRecorderApplicationStartup`. To use this variant, you must configure an instance of it
+to the `ApplicationContext` as soon as it's been created.
+
+Developers can also use the `ApplicationStartup` infrastructure if they're providing their own
+`AbstractApplicationContext` subclass, or if they wish to collect more precise data.
+
+WARNING: `ApplicationStartup` is meant to be only used during application startup and for
+the core container; this is by no means a replacement for Java profilers or
+metrics libraries like https://micrometer.io[Micrometer].
+
+To start collecting custom `StartupStep`, components can either get the `ApplicationStartup`
+instance from the application context directly, make their component implement `ApplicationStartupAware`,
+or ask for the `ApplicationStartup` type on any injection point.
+
+NOTE: Developers should not use the `"spring.*"` namespace when creating custom startup steps.
+This namespace is reserved for internal Spring usage and is subject to change.
 
 [[context-create]]
 === Convenient ApplicationContext Instantiation for Web Applications
